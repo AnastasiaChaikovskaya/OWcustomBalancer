@@ -12,6 +12,13 @@ var team2 = [];
 var team1_slots = {};
 var team2_slots = {};
 
+// multi-team balancer state (N teams of 5: 1 tank, 2 dps, 2 supports)
+// each element: { tank:[player], dps:[p,p], support:[p,p] }
+var multi_teams = [];
+// players left over when activePlayers.length % 5 != 0
+var multi_lobby_leftovers = [];
+var multi_last_meta = { team_count: 0, of_value: 0, off_role_count: 0, warnings: [] };
+
 // id's of pinned players. Those are not moving to lobby when team is cleared
 var pinned_players = new Set();
 

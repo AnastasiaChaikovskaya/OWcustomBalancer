@@ -95,9 +95,19 @@ var Balancer = {
 	
 	dbg_class_combinations: 0,
 	dbg_printed_lines: 0,
-	
-	
-	
+
+	// multi-team balancer state (N teams of 5 = 1 tank / 2 dps / 2 supports)
+	multi_teams: [],
+	multi_leftovers: [],
+	multi_meta: { team_count:0, of_value:0, off_role_count:0, warnings:[] },
+	multi_restart_count: 40,
+	multi_balance_priority: 50,
+	multi_separate_otps: true,
+	multi_of_threshold: 10,
+	multi_balanced_solutions: [],
+	multi_old_state: "",
+
+
 	// public methods
 	
 	balanceTeams: function() {
@@ -911,6 +921,371 @@ var Balancer = {
 				this.onDebugMessage.call( undefined, "OF = " + OF_current);
 			}
 		}
+	},
+
+
+	// -----------------------------------------------
+	// Multi-team balancing (N teams of 5: 1 tank / 2 dps / 2 supports)
+	// Algorithm: snake-draft seed + pair-swap hill climbing with random restarts.
+	// Output goes to this.multi_teams / this.multi_leftovers / this.multi_meta.
+
+	balanceTeamsMulti: function() {
+		var start_time = performance.now();
+
+		this.multi_teams = [];
+		this.multi_leftovers = [];
+		this.multi_meta = { team_count:0, of_value:0, off_role_count:0, warnings:[] };
+		this.is_successfull = false;
+
+		var N = Math.floor( this.players.length / 5 );
+		if ( N < 2 ) {
+			this.multi_meta.warnings.push(
+				"Need at least 10 active players (have " + this.players.length + ")" );
+			return;
+		}
+
+		// Deterministic player ordering for stable state comparison
+		this.players.sort( function(p1, p2) {
+			return ( p1.id < p2.id ? -1 : (p1.id > p2.id ? 1 : 0) );
+		} );
+
+		// Return a cached alternative if input hasn't changed
+		var new_state = this.getMultiStateString();
+		if ( new_state === this.multi_old_state && this.multi_balanced_solutions.length > 1 ) {
+			this.debugMsg( "multi input unchanged, picking another cached variant" );
+			this.buildRandomMultiVariant();
+			return;
+		}
+		this.multi_old_state = new_state;
+		this.multi_balanced_solutions = [];
+
+		// Randomize active-players order so leftover selection is not biased by input order
+		var active_players = this.players.slice();
+		for ( var si = active_players.length - 1; si > 0; si-- ) {
+			var sj = Math.floor( Math.random() * (si + 1) );
+			var tmp = active_players[si];
+			active_players[si] = active_players[sj];
+			active_players[sj] = tmp;
+		}
+		var leftovers_all = [];
+		var needed = 5 * N;
+		if ( active_players.length > needed ) {
+			leftovers_all = active_players.splice( needed, active_players.length - needed );
+		}
+
+		var bestOF = Infinity;
+		var bestSolutions = [];
+		var restart_count = this.multi_restart_count > 0 ? this.multi_restart_count : 40;
+
+		for ( var r = 0; r < restart_count; r++ ) {
+			if ( typeof this.onProgressChange == "function" ) {
+				var prog = Math.round( (r / restart_count) * 100 );
+				this.onProgressChange.call( undefined, prog );
+			}
+
+			var teams = this.seedSnakeDraftMulti( active_players, N, r );
+			teams = this.hillClimbMulti( teams );
+			var ofv = this.objectiveMulti( teams );
+
+			if ( ofv < bestOF - 0.0001 ) {
+				bestOF = ofv;
+				bestSolutions = [ this.cloneTeamsMulti(teams) ];
+			} else if ( ofv - bestOF <= this.multi_of_threshold ) {
+				bestSolutions.push( this.cloneTeamsMulti(teams) );
+			}
+		}
+
+		if ( bestSolutions.length === 0 ) {
+			this.multi_meta.warnings.push("No balanced combination found");
+			return;
+		}
+
+		this.multi_balanced_solutions = bestSolutions;
+		this.multi_leftovers = leftovers_all;
+		this.multi_meta.team_count = N;
+		this.multi_meta.of_value = bestOF;
+		this.buildRandomMultiVariant();
+
+		var exec_time = performance.now() - start_time;
+		this.debugMsg( "multi exec time " + exec_time + "ms, bestOF=" + bestOF +
+			", solutions=" + bestSolutions.length );
+	},
+
+	buildRandomMultiVariant: function() {
+		if ( this.multi_balanced_solutions.length === 0 ) {
+			this.is_successfull = false;
+			return;
+		}
+		var pick = Math.floor( Math.random() * this.multi_balanced_solutions.length );
+		this.multi_teams = this.cloneTeamsMulti( this.multi_balanced_solutions[pick] );
+		this.multi_meta.team_count = this.multi_teams.length;
+		this.multi_meta.off_role_count = this.countOffRoleMulti( this.multi_teams );
+		this.multi_meta.warnings = [];
+		if ( this.multi_meta.off_role_count > 0 ) {
+			this.multi_meta.warnings.push(
+				this.multi_meta.off_role_count + " off-role placement(s)" );
+		}
+		this.is_successfull = true;
+	},
+
+	// Serialize inputs relevant to multi-team balance so we can detect "same input"
+	getMultiStateString: function() {
+		var ids = [];
+		for ( var i = 0; i < this.players.length; i++ ) {
+			ids.push(this.players[i].id);
+		}
+		var tmp = {
+			ids: ids.join("|"),
+			mbp: this.multi_balance_priority,
+			msotp: this.multi_separate_otps,
+			moft: this.multi_of_threshold,
+			mrc: this.multi_restart_count,
+			as: this.adjust_sr,
+			asbc: this.adjust_sr_by_class,
+		};
+		return JSON.stringify(tmp);
+	},
+
+	// Shallow-copy team structures (players are references).
+	cloneTeamsMulti: function( teams ) {
+		var out = [];
+		for ( var i = 0; i < teams.length; i++ ) {
+			out.push({
+				tank:    teams[i].tank.slice(),
+				dps:     teams[i].dps.slice(),
+				support: teams[i].support.slice(),
+			});
+		}
+		return out;
+	},
+
+	// Off-role cost for a player assigned to slot_role.
+	// 0 = main class, 1 = secondary, 1.5 = tertiary, 3 = role not in classes at all.
+	playerOffRoleCost: function( player, slot_role ) {
+		if ( ! player || ! Array.isArray(player.classes) ) return 3;
+		var idx = player.classes.indexOf(slot_role);
+		if ( idx === 0 ) return 0;
+		if ( idx === 1 ) return 1;
+		if ( idx === 2 ) return 1.5;
+		return 3;
+	},
+
+	seedSnakeDraftMulti: function( players, N, jitter_seed ) {
+		var teams = [];
+		for ( var i = 0; i < N; i++ ) {
+			teams.push({ tank:[], dps:[], support:[] });
+		}
+
+		// Fixed slot composition
+		var slots_per_team = { tank:1, dps:2, support:2 };
+		// Assign tank first (scarcest), then dps, then support
+		var roles_ordered = ['tank', 'dps', 'support'];
+
+		var balancer = this;
+		var remaining = players.slice();
+
+		// Seeded pseudo-random for deterministic-per-restart jitter
+		var s = (jitter_seed * 2654435761 + 1013904223) >>> 0;
+		var rand = function() {
+			s = (s * 1664525 + 1013904223) >>> 0;
+			return (s & 0xffffff) / 0x1000000;
+		};
+
+		for ( var ri = 0; ri < roles_ordered.length; ri++ ) {
+			var role = roles_ordered[ri];
+			var need = N * slots_per_team[role];
+			if ( need === 0 ) continue;
+
+			var ranked = [];
+			for ( var p = 0; p < remaining.length; p++ ) {
+				var player = remaining[p];
+				ranked.push({
+					p: player,
+					cost: balancer.playerOffRoleCost( player, role ),
+					sr:   balancer.calcPlayerSRRoleLock( player, role ),
+					j:    rand(),
+				});
+			}
+			// lower cost first; then higher SR first; jitter for tie-break
+			ranked.sort( function(a, b) {
+				if ( a.cost !== b.cost ) return a.cost - b.cost;
+				if ( a.sr !== b.sr ) return b.sr - a.sr;
+				return a.j - b.j;
+			} );
+
+			var picked = ranked.slice( 0, need );
+			var picked_ids = {};
+			for ( var pi = 0; pi < picked.length; pi++ ) {
+				picked_ids[ picked[pi].p.id ] = true;
+			}
+			var new_remaining = [];
+			for ( var ri2 = 0; ri2 < remaining.length; ri2++ ) {
+				if ( ! picked_ids[ remaining[ri2].id ] ) {
+					new_remaining.push( remaining[ri2] );
+				}
+			}
+			remaining = new_remaining;
+
+			// Snake-draft picked (sorted by SR desc within each cost tier) into teams
+			var dir = 1;
+			var team_idx = 0;
+			for ( var si = 0; si < picked.length; si++ ) {
+				teams[team_idx][role].push( picked[si].p );
+				var next = team_idx + dir;
+				if ( next >= N ) { dir = -1; team_idx = N - 1; }
+				else if ( next < 0 ) { dir = 1; team_idx = 0; }
+				else { team_idx = next; }
+			}
+		}
+
+		return teams;
+	},
+
+	// Iteratively apply swap types until no swap improves the objective.
+	hillClimbMulti: function( teams ) {
+		var N = teams.length;
+		var roles = ['tank', 'dps', 'support'];
+		var MAX_PASSES = 20;
+
+		for ( var pass = 0; pass < MAX_PASSES; pass++ ) {
+			var improved = false;
+			var current_of = this.objectiveMulti( teams );
+
+			// Same-role swap between every pair of teams
+			for ( var i = 0; i < N; i++ ) {
+				for ( var j = i + 1; j < N; j++ ) {
+					for ( var ri = 0; ri < roles.length; ri++ ) {
+						var role = roles[ri];
+						var arr_i = teams[i][role];
+						var arr_j = teams[j][role];
+						for ( var a = 0; a < arr_i.length; a++ ) {
+							for ( var b = 0; b < arr_j.length; b++ ) {
+								var tmp = arr_i[a];
+								arr_i[a] = arr_j[b];
+								arr_j[b] = tmp;
+
+								var new_of = this.objectiveMulti( teams );
+								if ( new_of < current_of - 0.0001 ) {
+									current_of = new_of;
+									improved = true;
+								} else {
+									var tmp2 = arr_i[a];
+									arr_i[a] = arr_j[b];
+									arr_j[b] = tmp2;
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Cross-role swap inside the same team (reduces off-role cost)
+			for ( var k = 0; k < N; k++ ) {
+				for ( var r1 = 0; r1 < roles.length; r1++ ) {
+					for ( var r2 = r1 + 1; r2 < roles.length; r2++ ) {
+						var role1 = roles[r1];
+						var role2 = roles[r2];
+						var arr1 = teams[k][role1];
+						var arr2 = teams[k][role2];
+						for ( var a = 0; a < arr1.length; a++ ) {
+							for ( var b = 0; b < arr2.length; b++ ) {
+								var tmp = arr1[a];
+								arr1[a] = arr2[b];
+								arr2[b] = tmp;
+
+								var new_of = this.objectiveMulti( teams );
+								if ( new_of < current_of - 0.0001 ) {
+									current_of = new_of;
+									improved = true;
+								} else {
+									var tmp2 = arr1[a];
+									arr1[a] = arr2[b];
+									arr2[b] = tmp2;
+								}
+							}
+						}
+					}
+				}
+			}
+
+			if ( ! improved ) break;
+		}
+
+		return teams;
+	},
+
+	// Composite objective, smaller = better balanced.
+	// Factors: SD of team SR totals, off-role penalty (squared), OTP conflicts.
+	objectiveMulti: function( teams ) {
+		var N = teams.length;
+		var roles = ['tank', 'dps', 'support'];
+
+		var totals = new Array(N);
+		var sum = 0;
+		for ( var i = 0; i < N; i++ ) {
+			var t = 0;
+			for ( var ri = 0; ri < roles.length; ri++ ) {
+				var role = roles[ri];
+				var arr = teams[i][role];
+				for ( var k = 0; k < arr.length; k++ ) {
+					t += this.calcPlayerSRRoleLock( arr[k], role );
+				}
+			}
+			totals[i] = t;
+			sum += t;
+		}
+		var mean = sum / N;
+		var var_sq = 0;
+		for ( var i = 0; i < N; i++ ) {
+			var d = totals[i] - mean;
+			var_sq += d * d;
+		}
+		var sd = Math.sqrt( var_sq / N );
+		var sr_factor = sd / this.balance_max_sr_diff * 100;
+
+		// Off-role units (same penalty shape as calcClassMismatchRoleLock)
+		var off_units = 0;
+		for ( var i = 0; i < N; i++ ) {
+			for ( var ri = 0; ri < roles.length; ri++ ) {
+				var role = roles[ri];
+				var arr = teams[i][role];
+				for ( var k = 0; k < arr.length; k++ ) {
+					off_units += this.playerOffRoleCost( arr[k], role );
+				}
+			}
+		}
+		var class_factor = 10 * off_units * off_units;
+
+		var otp_factor = 0;
+		if ( this.multi_separate_otps ) {
+			for ( var i = 0; i < N; i++ ) {
+				var flat = teams[i].tank.concat(teams[i].dps).concat(teams[i].support);
+				otp_factor += this.calcOTPConflicts( flat );
+			}
+		}
+
+		var OF =
+			( class_factor * this.multi_balance_priority
+			+ sr_factor   * (100 - this.multi_balance_priority)
+			+ otp_factor )
+			/ 100;
+
+		return round_to( OF, 1 );
+	},
+
+	countOffRoleMulti: function( teams ) {
+		var count = 0;
+		var roles = ['tank', 'dps', 'support'];
+		for ( var i = 0; i < teams.length; i++ ) {
+			for ( var ri = 0; ri < roles.length; ri++ ) {
+				var role = roles[ri];
+				var arr = teams[i][role];
+				for ( var k = 0; k < arr.length; k++ ) {
+					if ( this.playerOffRoleCost(arr[k], role) > 0 ) count++;
+				}
+			}
+		}
+		return count;
 	},
 }
 

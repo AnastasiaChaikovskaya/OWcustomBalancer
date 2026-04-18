@@ -1,0 +1,17 @@
+{
+  "name": "ow-custom-balancer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Overwatch custom game balancer with N-team balancing mode",
+  "scripts": {
+    "start": "serve -l 3000 .",
+    "dev": "serve -l 3000 .",
+    "build:css": "tailwindcss -i ./src/tailwind.css -o ./style.css --minify",
+    "watch:css": "tailwindcss -i ./src/tailwind.css -o ./style.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.2.2",
+    "serve": "^14.2.4",
+    "tailwindcss": "^4.2.2"
+  }
+}

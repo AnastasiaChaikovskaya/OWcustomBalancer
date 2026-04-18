@@ -157,7 +157,26 @@ function find_player_by_id(player_id) {
 			}
 		}
 	}
-	
+
+	if ( typeof multi_teams !== "undefined" && Array.isArray(multi_teams) ) {
+		for ( let team_slots of multi_teams ) {
+			for ( let class_name in team_slots ) {
+				for( var i=0; i<team_slots[class_name].length; i++) {
+					if ( player_id == team_slots[class_name][i].id) {
+						return team_slots[class_name][i];
+					}
+				}
+			}
+		}
+	}
+	if ( typeof multi_lobby_leftovers !== "undefined" && Array.isArray(multi_lobby_leftovers) ) {
+		for( var i=0; i<multi_lobby_leftovers.length; i++) {
+			if ( player_id == multi_lobby_leftovers[i].id) {
+				return multi_lobby_leftovers[i];
+			}
+		}
+	}
+
 	return undefined;
 }
 
@@ -217,7 +236,13 @@ function get_default_settings() {
 		
 		// role lock balancer
 		balance_priority_rolelock: 50,
-		
+
+		// multi-team balancer (N teams of 5: 1 tank, 2 dps, 2 supports)
+		multi_balance_priority: 50,
+		multi_separate_otps: true,
+		multi_of_threshold: 10,
+		multi_restart_count: 40,
+
 		// stats updating
 		region: "eu",
 		update_class: true,
