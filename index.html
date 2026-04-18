@@ -5,6 +5,9 @@
 <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
 <title>OW Custom game balancer</title>
 <meta name="description" content="Overwatch custom game balancer">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 
 <script src="globals.js"></script>
@@ -21,13 +24,14 @@
 
 <body>
 
-<div class="page-title">Overwatch custom game balancer</div>
-<br/>
+<div class="app-topbar">
+	<div class="page-title">Overwatch custom game balancer</div>
 
-<div class="add-player-row">
-	<span class="add-player-plus">+</span>
-	<input id="new_player_id" name="new_player_id" type="text" size=35 placeholder="BattleTag" value="" onkeyup="new_player_keyup(event);"/>
-	<button onclick="add_player_click();" id="add_btn" class="px-4 py-2 rounded-2xl">Add player</button>
+	<div class="add-player-row">
+		<span class="add-player-plus">+</span>
+		<input id="new_player_id" name="new_player_id" type="text" size=35 placeholder="BattleTag (Name#1234)" value="" onkeyup="new_player_keyup(event);"/>
+		<button onclick="add_player_click();" id="add_btn" class="px-4 py-2 rounded-2xl">Add player</button>
+	</div>
 </div>
 
 <div class="workspace">
@@ -64,7 +68,6 @@
 			<div class="flex items-baseline">
 				<label for="lobby_filter">Filter: &nbsp;</label>
 				<input id="lobby_filter" class="filter" type="text" size=35 autocomplete="off" placeholder="player name or battletag" value="" oninput="on_lobby_filter_change();"/>
-				<span onclick="lobby_filter_clear();" class="cursor-default" title="Clear filter" alt="Clear filter"> &#9003; </span>
 			</div>
 			
 			<div class="lobby-container">
@@ -74,21 +77,15 @@
 			</div>
 			
 			<br/>
-			<div title="Drop player here to delete" class="trashcan" id="trashcan" ondrop="player_drop(event)" ondragover="player_allowDrop(event)">				
-				&#9760; Delete player (drop here)
+			<div title="Drop player here to delete" class="trashcan" id="trashcan" ondrop="player_drop(event)" ondragover="player_allowDrop(event)">
+				Drop a player here to delete
 			</div>
 		</div>
 		
 		
 		<div class="workspace-col team-col team-cell">
 			<div class="team-toolbar">
-			<input title="Clear team and move all players to lobby" type="button" class="team_btn" onclick="move_team_to_lobby(team1, team1_slots);redraw_teams();" value=" X "/>
-			<button title="Sort team by class" class="team_btn" onclick="sort_team(team1, 'class');redraw_teams();">
-				&uarr;&darr;
-				<img src="class_icons/dps.png" style="height: 0.9em;">
-			</button>
-			<input title="Sort team by name" type="button" class="team_btn" onclick="sort_team(team1, 'display_name');redraw_teams();" value="&uarr;&darr;Az"/>
-			<input title="Sort team by SR" type="button" class="team_btn" onclick="sort_team(team1, 'sr');redraw_teams();" value="&uarr;&darr;123"/>
+			<input title="Clear team and move all players to lobby" type="button" class="team_btn" onclick="move_team_to_lobby(team1, team1_slots);redraw_teams();" value="Clear team"/>
 			</div>
 			
 			<div>
@@ -146,13 +143,7 @@
 
 		<div class="workspace-col team-col team-cell">
 			<div class="team-toolbar">
-			<input title="Clear team and move all players to lobby" type="button" class="team_btn" onclick="move_team_to_lobby(team2, team2_slots);redraw_teams();" value=" X "/>
-			<button title="Sort team by class" class="team_btn" onclick="sort_team(team2, 'class');redraw_teams();">
-				&uarr;&darr;
-				<img src="class_icons/dps.png" style="height: 0.9em;">
-			</button>
-			<input title="Sort team by name" type="button" class="team_btn" onclick="sort_team(team2, 'display_name');redraw_teams();" value="&uarr;&darr;Az"/>
-			<input title="Sort team by SR" type="button" class="team_btn" onclick="sort_team(team2, 'sr');redraw_teams();" value="&uarr;&darr;123"/>
+			<input title="Clear team and move all players to lobby" type="button" class="team_btn" onclick="move_team_to_lobby(team2, team2_slots);redraw_teams();" value="Clear team"/>
 			</div>
 			
 			<div>
@@ -353,6 +344,9 @@
 					<div class="cell">
 						<span id="dlg_player_private_profile" style="display:none" title="Private profile">&#128274;&#xFE0E;</span>
 						<a href="" id="dlg_player_id"></a>
+						<button type="button" class="copy-btn" id="dlg_player_id_copy" title="Copy BattleTag" onclick="copy_player_id(this);" aria-label="Copy BattleTag">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+						</button>
 					</div>
 				</div>
 				<div class="row">
@@ -422,10 +416,7 @@
 			<br/>	
 			
 			<div id="dlg_settings">
-				<table>
-				<tr>
-				<td class="align-top">
-				
+				<div class="settings-grid">
 					<div class="group">
 						<div class="group-header">
 							Common
@@ -443,15 +434,15 @@
 							Team slots
 							</br>
 							<div class="subgroup" id="slots_count_group">
-								<img src="class_icons/tank.png" style="height: 1em;"/>
+								<img src="class_icons/tank.svg" style="height: 1em;"/>
 								<input id="slots_count_tank" class="percent" type="number" size=3 min=0 max=12 autocomplete="off" value="2"/>
 								&nbsp;
 								
-								<img src="class_icons/dps.png" class="20"/>
+								<img src="class_icons/dps.svg" class="20"/>
 								<input id="slots_count_dps" class="percent" type="number" size=3 min=0 max=12 autocomplete="off" value="2"/>
 								&nbsp;
 								
-								<img src="class_icons/support.png" style="height: 1em;"/>
+								<img src="class_icons/support.svg" style="height: 1em;"/>
 								<input id="slots_count_support" class="percent" type="number" size=3 min=0 max=12 autocomplete="off" value="2"/>
 								</br>
 							</div>
@@ -461,28 +452,25 @@
 							<label for="adjust_sr">Adjust player SR by main class</label>
 							</br>
 							<div class="subgroup" id="adjust_sr_sub">
-								<img src="class_icons/tank.png" style="height: 1em;"/>
+								<img src="class_icons/tank.svg" style="height: 1em;"/>
 								<input disabled id="adjust_tank" class="percent" type="number" size=3 min=0 max=999 autocomplete="off" value="100"/>
 								% &nbsp;
 								
-								<img src="class_icons/dps.png" style="height: 1em;"/>
+								<img src="class_icons/dps.svg" style="height: 1em;"/>
 								<input disabled id="adjust_dps" class="percent" type="number" size=3 min=0 max=999 autocomplete="off" value="120"/>
 								% &nbsp;
 								
-								<img src="class_icons/support.png" style="height: 1em;"/>
+								<img src="class_icons/support.svg" style="height: 1em;"/>
 								<input disabled id="adjust_support" class="percent" type="number" size=3 min=0 max=999 autocomplete="off" value="80"/>
 								%  </br>
 							</div>
 							
 							<input type="checkbox" id="separate_otps">
 							<label for="separate_otps">Do not place similar one-trick ponies into same team</label>
-							</br>						
+							</br>
 						</div>
 					</div>
-				
-				</td>
-				<td class="align-top">
-										
+
 					<div class="group">
 						<div class="group-header">
 							Stats
@@ -513,12 +501,7 @@
 							</br>
 						</div>
 					</div>
-					
-				</td>
-				</tr>
-				<tr>
-				<td class="align-top">
-					
+
 					<div class="group">
 						<div class="group-header">
 							Classic balancer options
@@ -543,12 +526,7 @@
 							</select>
 						</div>
 					</div>
-					
-					</br>
-				
-				</td>
-				
-				<td class="align-top">
+
 					<div class="group">
 						<div class="group-header">
 							Role lock balancer options
@@ -564,12 +542,8 @@
 							<br/>
 						</div>
 					</div>
-				
-				</td>
-				</tr>
-				</table>
-					
-				<br/>
+
+				</div><!-- /settings-grid -->
 			</div>
 			
 			<div class="pb-4">

@@ -201,10 +201,14 @@ function apply_settings() {
 		if ( setting_name == "slots_count" ) {
 			continue;
 		}
-		
+
 		var setting_input = document.getElementById(setting_name);
+		if (setting_input === null) {
+			// no UI control for this setting — leave current value in place
+			continue;
+		}
 		var setting_value;
-		
+
 		switch( setting_input.type ) {
 			case "checkbox":
 				setting_value = setting_input.checked;
@@ -216,7 +220,7 @@ function apply_settings() {
 			default:
 				setting_value = setting_input.value;
 		}
-		
+
 		Settings[setting_name] = setting_value;
 	}
 	
@@ -296,6 +300,43 @@ function clear_lobby() {
 		save_pinned_list();
 		redraw_lobby();
 	}
+}
+
+function copy_player_id( btn ) {
+	if ( player_being_edited === undefined ) { return; }
+	var display_id = player_being_edited.id.replace("-", "#");
+
+	var done = function() {
+		if ( ! btn ) { return; }
+		btn.classList.add("copy-btn--copied");
+		btn.setAttribute("title", "Copied!");
+		setTimeout( function() {
+			btn.classList.remove("copy-btn--copied");
+			btn.setAttribute("title", "Copy BattleTag");
+		}, 1200 );
+	};
+
+	if ( navigator.clipboard && navigator.clipboard.writeText ) {
+		navigator.clipboard.writeText(display_id).then(done, function() {
+			// fallback for older browsers / insecure contexts
+			fallback_copy(display_id);
+			done();
+		});
+	} else {
+		fallback_copy(display_id);
+		done();
+	}
+}
+
+function fallback_copy( text ) {
+	var ta = document.createElement("textarea");
+	ta.value = text;
+	ta.style.position = "fixed";
+	ta.style.left = "-9999px";
+	document.body.appendChild(ta);
+	ta.select();
+	try { document.execCommand("copy"); } catch (e) {}
+	document.body.removeChild(ta);
 }
 
 function clear_edited_mark( field_name ) {
@@ -1584,7 +1625,7 @@ function draw_player( player_struct, small=false, is_captain=false, slot_class=u
 		
 		var class_icon = document.createElement("img");
 		class_icon.className = "class-icon-slot";
-		class_icon.src = "class_icons/"+slot_class+".png";
+		class_icon.src = "class_icons/"+slot_class+".svg";
 		class_icon.title = slot_class;
 		class_cell.appendChild(class_icon);
 		
@@ -1738,7 +1779,7 @@ function draw_player_cell( player_struct, small=false, is_captain=false, slot_cl
 			if( player_struct.ce === true ) {
 				class_icon.classList.add("class-edited");
 			}
-			class_icon.src = "class_icons/"+player_struct.classes[i]+".png";
+			class_icon.src = "class_icons/"+player_struct.classes[i]+".svg";
 			class_icon.title = player_struct.classes[i] + " " + is_undefined(player_struct.sr_by_class[player_struct.classes[i]],0) + " SR";
 			new_player_item.appendChild(class_icon);
 		}
@@ -1778,7 +1819,8 @@ function fill_player_stats_dlg( clear_errors=true ) {
 	document.getElementById("dlg_title_edit_player").innerHTML = escapeHtml( player_struct.display_name );
 	
 	document.getElementById("dlg_player_id").href = "https://playoverwatch.com/en-us/career/pc/"+player_struct.id;
-	document.getElementById("dlg_player_id").innerHTML = player_struct.id;
+	// Display uses `#` (canonical BattleTag separator) — internal id stays `-` for URL/storage safety.
+	document.getElementById("dlg_player_id").innerHTML = escapeHtml( player_struct.id.replace("-", "#") );
 	
 	if ( player_struct.private_profile === true ) {
 		document.getElementById("dlg_player_private_profile").style.display = "inline";
@@ -1829,7 +1871,7 @@ function fill_player_stats_dlg( clear_errors=true ) {
 		class_title.innerHTML = class_name;		
 		
 		var class_img = class_row.getElementsByClassName("class-icon-dlg")[0];
-		class_img.src = "class_icons/"+class_name+".png";
+		class_img.src = "class_icons/"+class_name+".svg";
 		
 		var sr_edit = class_row.getElementsByClassName("dlg-sr-by-class")[0];
 		var sr = player_struct.sr_by_class[class_name];
@@ -1899,7 +1941,10 @@ function fill_settings_dlg( settings_obj ) {
 			continue;
 		}
 		var setting_input = document.getElementById(setting_name);
-		if (setting_input === null) { alert("broken setting: "+setting_name);}
+		if (setting_input === null) {
+			console.warn("No UI control for setting '"+setting_name+"' — skipping.");
+			continue;
+		}
 		switch( setting_input.type ) {
 			case "checkbox":
 				setting_input.checked = setting_value;
@@ -1908,15 +1953,18 @@ function fill_settings_dlg( settings_obj ) {
 				setting_input.value = setting_value;
 		}
 	}
-	
+
 	var setting_name = "slots_count";
 	for ( class_name in settings_obj[setting_name] ) {
 		var setting_input = document.getElementById(setting_name+"_"+class_name);
-		if (setting_input === null) { alert("broken setting: "+setting_name);}
+		if (setting_input === null) {
+			console.warn("No UI control for slots_count_"+class_name+" — skipping.");
+			continue;
+		}
 		var setting_value = settings_obj[setting_name][class_name];
 		setting_input.value = setting_value;
 	}
-		
+
 	adjust_sr_change();
 }
 
@@ -1985,7 +2033,7 @@ function player_class_row_add() {
 	cell.style = "text-align: left;";
 	img = document.createElement("img");
 	img.className = "class-icon-dlg";
-	img.src = "class_icons/"+class_names[0]+".png";
+	img.src = "class_icons/"+class_names[0]+".svg";
 	cell.appendChild(img);
 	span_node = document.createElement("span");
 	span_node.className = "dlg-class-name";
@@ -2309,9 +2357,9 @@ function render_multi_team_card( team_index, team ) {
 			player_count++;
 			var rank = get_rank_name(sr);
 			var rank_icon = rank_icons_datauri[rank] ?
-				"<img src='"+rank_icons_datauri[rank]+"' alt='"+rank+"' style='height:1em;vertical-align:middle;'/>" : "";
+				"<img src='"+rank_icons_datauri[rank]+"' alt='"+rank+"' style='height:2em;vertical-align:middle;'/>" : "";
 			var role_icon = class_icons_datauri[role] ?
-				"<img src='"+class_icons_datauri[role]+"' alt='"+role+"' style='height:1em;vertical-align:middle;filter:opacity(70%);'/>" : role;
+				"<img src='"+class_icons_datauri[role]+"' alt='"+role+"' style='height:1.8em;vertical-align:middle;'/>" : role;
 			var name_html = escapeHtml(p.display_name);
 			var off_role = (p.classes && p.classes.indexOf(role) !== 0);
 			if ( off_role ) {

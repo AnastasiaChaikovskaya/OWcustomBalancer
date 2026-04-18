@@ -571,31 +571,21 @@ function prepare_datauri_icons() {
 		image.class_name = class_names[c];
 
 		image.onload = function () {
-			var img_size_px = 20;
-			
-			// downscale in 3 steps to get better quality with offscreen canvas
+			// SVG sources render crisply at any resolution — draw directly to the
+			// target size, no multi-step downscale needed.
+			var img_size_px = 40;
 			var oc = document.createElement('canvas');
+			oc.width = img_size_px;
+			oc.height = img_size_px;
 			var octx = oc.getContext('2d');
-			oc.width = this.width  * 0.5;
-			oc.height = this.height * 0.5;
-			octx.drawImage(this, 0, 0, oc.width, oc.height);
-			
-			var oc2 = document.createElement('canvas');
-			var octx2 = oc2.getContext('2d');
-			oc2.width = oc.width  * 0.5;
-			oc2.height = oc.height * 0.5;
-			octx2.drawImage(oc, 0, 0, oc.width * 0.5, oc.height * 0.5);
+			octx.imageSmoothingEnabled = true;
+			octx.imageSmoothingQuality = 'high';
+			octx.drawImage(this, 0, 0, img_size_px, img_size_px);
 
-			var oc3 = document.createElement('canvas');
-			var octx3 = oc3.getContext('2d');
-			oc3.width = img_size_px;
-			oc3.height = img_size_px;
-			octx3.drawImage(oc2, 0, 0, img_size_px, img_size_px);
-			
-			class_icons_datauri[this.class_name] = oc3.toDataURL('image/png');
+			class_icons_datauri[this.class_name] = oc.toDataURL('image/png');
 		};
 
-		image.src = "class_icons/"+class_names[c]+".png";
+		image.src = "class_icons/"+class_names[c]+".svg";
 	}
 	
 	for ( var rank_name in ow_ranks ) {
@@ -603,15 +593,15 @@ function prepare_datauri_icons() {
 		image.rank_name = rank_name;
 
 		image.onload = function () {
-			var img_size_px = 20;
-			
+			var img_size_px = 36;
+
 			// downscale in 3 steps to get better quality with offscreen canvas
 			var oc = document.createElement('canvas');
 			var octx = oc.getContext('2d');
 			oc.width = this.width  * 0.5;
 			oc.height = this.height * 0.5;
 			octx.drawImage(this, 0, 0, oc.width, oc.height);
-			
+
 			var oc2 = document.createElement('canvas');
 			var octx2 = oc2.getContext('2d');
 			oc2.width = oc.width  * 0.5;
@@ -623,7 +613,7 @@ function prepare_datauri_icons() {
 			oc3.width = img_size_px;
 			oc3.height = img_size_px;
 			octx3.drawImage(oc2, 0, 0, img_size_px, img_size_px);
-			
+
 			rank_icons_datauri[this.rank_name] = oc3.toDataURL('image/png');
 		};
 
