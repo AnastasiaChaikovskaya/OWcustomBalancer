@@ -1132,7 +1132,8 @@ div#dlg_progress      { width: 25em; }
 	border-bottom: 1px solid var(--border-subtle);
 }
 .group-content { padding: 12px; }
-.subgroup { margin-left: 14px; padding: 2px 0 6px; }
+.subgroup { margin-left: 14px; padding: 2px 0 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.subgroup br { display: none; }
 .group-collapsed { display: none; }
 
 input.percent { width: 3.5em; text-align: center; }
