@@ -39,21 +39,9 @@
 			<!-- lobby -->
 			
 			<div class="team-toolbar flex items-center gap-2 justify-start flex-row-reverse">
-				<input title="Clear lobby" type="button" class="team_btn" onclick="clear_lobby();" value=" X "/>
+				<input type="button" class="team_btn" onclick="clear_lobby();" value="Clear lobby"/>
 				<input title="Import lobby" id="import_lobby_btn" type="button" class="team_btn" onclick="import_lobby_dlg_open();" value="Import"/>
 				<input title="Export lobby" type="button" class="team_btn" onclick="export_lobby_dlg_open();" value="Export"/>
-				
-				<div class="dropdown float-right">
-					<button class="team_btn top-0">&uarr;&darr; Sort &#x25BC;</button>
-					<div class="dropdown-content">
-						<div onclick="sort_lobby('display_name', this);">by name</div>
-						<div onclick="sort_lobby('sr', this);">by SR</div>
-						<div onclick="sort_lobby('class', this);">by class</div>
-						<div onclick="sort_lobby('level', this);">by level</div>
-						<div onclick="sort_lobby('checkin', this);">by check-in</div>						
-						<div onclick="shuffle_lobby();">shuffle</div>
-					</div>
-				</div>
 			</div>
 			
 			<div>

@@ -1392,7 +1392,10 @@ th.sort-down::after { content: "↓"; color: var(--accent); padding-left: 0.3em;
 #dlg_html_export_teams,
 #dlg_html_export_multi { color: #111; }
 
+/* Dev-only panel — hidden from end users. Inspect via devtools if needed,
+   or toggle on via JS when Debug button is used. */
 #debug_log {
+	display: none;
 	color: var(--fg-3);
 	font-family: var(--font-mono);
 	font-size: 11px;
