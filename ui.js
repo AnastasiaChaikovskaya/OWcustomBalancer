@@ -3,10 +3,89 @@
 */
 
 
+/*
+	Render an HTML snippet to a <img> PNG inside `container_el`.
+	Uses SVG <foreignObject> + canvas. Loads the SVG via a Blob URL
+	(not a data URL) so the payload is not limited by URL length and
+	doesn't need URL-encoding.
+*/
+function render_html_to_image( html_str, container_el ) {
+	var tmp_div = document.createElement("div");
+	tmp_div.style.position = "absolute";
+	tmp_div.style.left = "-99999px";
+	tmp_div.style.top = "0";
+	tmp_div.style.visibility = "hidden";
+	tmp_div.innerHTML = html_str;
+	document.body.appendChild(tmp_div);
+	var first = tmp_div.firstElementChild;
+	var img_width = first ? first.clientWidth : 0;
+	var img_height = first ? first.clientHeight : 0;
+	document.body.removeChild(tmp_div);
+
+	if ( img_width === 0 || img_height === 0 ) {
+		container_el.textContent = "Nothing to export (teams are empty).";
+		return;
+	}
+
+	var svg_str =
+		'<svg xmlns="http://www.w3.org/2000/svg" width="' + img_width + '" height="' + img_height + '">' +
+			'<foreignObject width="100%" height="100%">' +
+				'<div xmlns="http://www.w3.org/1999/xhtml">' +
+					html_str +
+				'</div>' +
+			'</foreignObject>' +
+		'</svg>';
+
+	var svg_blob = new Blob([svg_str], { type: "image/svg+xml;charset=utf-8" });
+	var svg_url = URL.createObjectURL(svg_blob);
+
+	var canvas = document.createElement("canvas");
+	canvas.width = img_width;
+	canvas.height = img_height;
+	var ctx = canvas.getContext("2d");
+
+	var svg_img = new Image();
+
+	svg_img.onload = function() {
+		try {
+			ctx.drawImage(svg_img, 0, 0);
+		} catch (e) {
+			URL.revokeObjectURL(svg_url);
+			container_el.textContent = "Image render failed: " + (e && e.message ? e.message : e);
+			return;
+		}
+		URL.revokeObjectURL(svg_url);
+
+		canvas.toBlob(function(blob) {
+			if ( ! blob ) {
+				container_el.textContent = "Image render failed (canvas export returned null — the canvas may be tainted).";
+				return;
+			}
+			var png_url = URL.createObjectURL(blob);
+			var out_img = document.createElement("img");
+			out_img.onload = function() { URL.revokeObjectURL(png_url); };
+			out_img.src = png_url;
+			container_el.appendChild(out_img);
+		});
+	};
+
+	svg_img.onerror = function() {
+		URL.revokeObjectURL(svg_url);
+		container_el.textContent = "SVG failed to load. The generated markup may have invalid XHTML.";
+	};
+
+	svg_img.src = svg_url;
+}
+
+
 function add_player_click() {
 	var player_id = document.getElementById("new_player_id").value;
 	player_id = format_player_id( player_id );
-	
+
+	if ( ! player_id ) {
+		return;
+	}
+
 	// check duplicates
 	if ( find_player_by_id(player_id) !== undefined ) {
 		alert("Player already added");
@@ -14,13 +93,25 @@ function add_player_click() {
 		setTimeout( function() {highlight_player( player_id );}, 500 );
 		return;
 	}
-		
-	document.getElementById("add_btn").disabled = true;
-	
-	player_being_added = create_empty_player();
-	player_being_added.id = player_id;
-	
-	StatsUpdater.addToQueue( player_being_added, 0, true );
+
+	var new_player = create_empty_player();
+	new_player.id = player_id;
+	new_player.display_name = format_player_name( player_id ) || player_id;
+	delete new_player.empty;
+
+	lobby.push( new_player );
+
+	save_players_list();
+	redraw_lobby();
+	redraw_teams();
+
+	document.getElementById("new_player_id").value = "";
+	player_being_added = undefined;
+
+	// open edit dialog so the user can fill in SR / classes
+	player_being_edited = new_player;
+	fill_player_stats_dlg();
+	open_dialog("popup_dlg_edit_player");
 }
 
 function add_test_players() {
@@ -432,51 +523,8 @@ function export_teams_dlg_change_format() {
 		html_container.style.display = "";
 		document.getElementById("dlg_html_export_teams_hint").style.display = "none";
 		document.getElementById("dlg_textarea_export_teams").style.display = "none";
-		
-		// convert html to image
-				
-		// calculate image size
-		var tmp_div = document.createElement("div");
-		tmp_div.style.position = "absolute";
-		tmp_div.style.visibility = "hidden";
-		tmp_div.innerHTML = export_str;
-		document.body.appendChild(tmp_div);
-		var img_width = tmp_div.firstChild.clientWidth;
-		var img_height = tmp_div.firstChild.clientHeight;
-		document.body.removeChild(tmp_div);
 
-		var data = '<svg xmlns="http://www.w3.org/2000/svg" width="'+img_width+'" height="'+img_height+'">' +
-				   '<foreignObject width="100%" height="100%">' +
-				   '<div xmlns="http://www.w3.org/1999/xhtml" >' +
-					 export_str +
-				   '</div>' +
-				   '</foreignObject>' +
-				   '</svg>';
-			
-		data = encodeURIComponent(data);
-		
-		var canvas = document.createElement('canvas');
-		canvas.width = img_width;
-		canvas.height = img_height;
-		var ctx = canvas.getContext('2d');
-		
-		var svg_img = new Image();
-
-		svg_img.onload = function() {
-			ctx.drawImage(svg_img, 0, 0);
-
-			canvas.toBlob(function(blob) {
-				var newImg = document.createElement('img'),
-				url = URL.createObjectURL(blob);
-
-				newImg.onload = function() { URL.revokeObjectURL(url); 	};
-
-				newImg.src = url;
-				html_container.appendChild(newImg);
-			});
-		}
-
-		svg_img.src = "data:image/svg+xml," + data;
+		render_html_to_image( export_str, html_container );
 	}
 }
 
@@ -1351,6 +1399,12 @@ function on_balance_worker_message(e) {
 			document.getElementById("dlg_progress_cancel").style.display = "none";
 			document.getElementById("dlg_progress_close").style.display = "";
 		}
+	} else if ( event_type == "finish_multi" ) {
+		if (e.data.length < 2) {
+			return;
+		}
+		var result_struct = e.data[1];
+		on_balance_multi_message( result_struct );
 	} else if ( event_type == "error" ) {
 		if (e.data.length < 2) {
 			return;
@@ -2120,4 +2174,227 @@ function select_html( html_container ) {
 function update_teams_sr() {
 	document.getElementById("team1_sr").innerHTML = calc_team_sr(team1, team1_slots);
 	document.getElementById("team2_sr").innerHTML = calc_team_sr(team2, team2_slots);
+}
+
+
+/*
+*		Multi-team balancer (N teams of 5: 1 tank / 2 dps / 2 supports)
+*/
+
+function balance_multi_teams() {
+	// send balancer settings to worker
+	var balancer_settings = {
+		adjust_sr: Settings.adjust_sr,
+		adjust_sr_by_class: {
+			tank: Settings.adjust_tank,
+			dps: Settings.adjust_dps,
+			support: Settings.adjust_support,
+		},
+		multi_balance_priority: Settings.multi_balance_priority,
+		multi_separate_otps:    Settings.multi_separate_otps,
+		multi_of_threshold:     Settings.multi_of_threshold,
+		multi_restart_count:    Settings.multi_restart_count,
+	};
+	BalanceWorker.postMessage(["settings", balancer_settings]);
+
+	// Collect all active players: lobby + team1/2 + team1/2 slots
+	// (same union as used by fill_teams / balance_teams flows)
+	var players = lobby.slice();
+	players = players.concat( team1 );
+	for( let class_name in team1_slots ) {
+		players = players.concat( team1_slots[class_name] );
+	}
+	players = players.concat( team2 );
+	for( let class_name in team2_slots ) {
+		players = players.concat( team2_slots[class_name] );
+	}
+
+	// If check-in is in use, restrict to checked-in players only
+	if ( checkin_list.size > 0 ) {
+		players = players.filter(function(p) { return checkin_list.has(p.id); });
+	}
+
+	if ( players.length < 10 ) {
+		alert("Need at least 10 active players to form 2 teams of 5 (have " + players.length + ").");
+		return;
+	}
+
+	BalanceWorker.postMessage(["balance_multi", players]);
+
+	document.getElementById("dlg_progress_bar").value = 0;
+	document.getElementById("dlg_progress_text").innerHTML = "0 %";
+	document.getElementById("dlg_progress_cancel").style.display = "";
+	document.getElementById("dlg_progress_close").style.display = "none";
+	open_dialog( "popup_dlg_progress" );
+}
+
+function on_balance_multi_message( result_struct ) {
+	if ( ! result_struct.is_successfull ) {
+		var msg = "Balance not found";
+		if ( result_struct.meta && result_struct.meta.warnings && result_struct.meta.warnings.length ) {
+			msg = result_struct.meta.warnings.join("; ");
+		}
+		document.getElementById("dlg_progress_text").innerHTML = msg;
+		document.getElementById("dlg_progress_cancel").style.display = "none";
+		document.getElementById("dlg_progress_close").style.display = "";
+		return;
+	}
+
+	// Copy result into globals (deep-cloning the array; players are refs)
+	multi_teams = [];
+	for ( var i = 0; i < result_struct.multi_teams.length; i++ ) {
+		var t = result_struct.multi_teams[i];
+		multi_teams.push({
+			tank:    t.tank.slice(),
+			dps:     t.dps.slice(),
+			support: t.support.slice(),
+		});
+	}
+	multi_lobby_leftovers = (result_struct.leftovers || []).slice();
+	multi_last_meta = result_struct.meta || { team_count: multi_teams.length, warnings: [] };
+
+	close_dialog("popup_dlg_progress");
+	render_multi_teams_grid();
+	open_dialog("popup_dlg_multi_teams");
+}
+
+function render_multi_teams_grid() {
+	var N = multi_teams.length;
+	document.getElementById("multi_team_count").innerHTML = N;
+
+	var warn_el = document.getElementById("multi_teams_warnings");
+	if ( multi_last_meta && multi_last_meta.warnings && multi_last_meta.warnings.length ) {
+		warn_el.innerHTML = "&#9888; " + multi_last_meta.warnings.map(escapeHtml).join("; ");
+		warn_el.style.display = "";
+	} else {
+		warn_el.innerHTML = "";
+		warn_el.style.display = "none";
+	}
+
+	var html = "";
+	for ( var i = 0; i < N; i++ ) {
+		html += render_multi_team_card( i, multi_teams[i] );
+	}
+	document.getElementById("multi_teams_container").innerHTML = html;
+
+	// Leftovers
+	var leftovers_el = document.getElementById("multi_leftovers_list");
+	document.getElementById("multi_leftovers_count").innerHTML = multi_lobby_leftovers.length;
+	if ( multi_lobby_leftovers.length > 0 ) {
+		var l_html = "";
+		for ( var i = 0; i < multi_lobby_leftovers.length; i++ ) {
+			var p = multi_lobby_leftovers[i];
+			l_html += "<span class='multi-leftover-chip'>" + escapeHtml(p.display_name) + "</span>";
+		}
+		leftovers_el.innerHTML = l_html;
+		document.getElementById("multi_leftovers_section").style.display = "";
+	} else {
+		leftovers_el.innerHTML = "";
+		document.getElementById("multi_leftovers_section").style.display = "none";
+	}
+}
+
+function render_multi_team_card( team_index, team ) {
+	var roles = ['tank', 'dps', 'support'];
+	var total_sr = 0;
+	var player_count = 0;
+	var rows = "";
+	for ( var ri = 0; ri < roles.length; ri++ ) {
+		var role = roles[ri];
+		var arr = team[role];
+		for ( var k = 0; k < arr.length; k++ ) {
+			var p = arr[k];
+			var sr = get_player_sr(p, role);
+			total_sr += sr;
+			player_count++;
+			var rank = get_rank_name(sr);
+			var rank_icon = rank_icons_datauri[rank] ?
+				"<img src='"+rank_icons_datauri[rank]+"' alt='"+rank+"' style='height:1em;vertical-align:middle;'/>" : "";
+			var role_icon = class_icons_datauri[role] ?
+				"<img src='"+class_icons_datauri[role]+"' alt='"+role+"' style='height:1em;vertical-align:middle;filter:opacity(70%);'/>" : role;
+			var name_html = escapeHtml(p.display_name);
+			var off_role = (p.classes && p.classes.indexOf(role) !== 0);
+			if ( off_role ) {
+				name_html = "<span title='off-role' class='off-role-name'>" + name_html + "</span>";
+			}
+			rows +=
+				"<div class='multi-team-row'>"
+				+ "<span>" + role_icon + "</span>"
+				+ "<span class='multi-team-name'>" + name_html + "</span>"
+				+ "<span class='multi-team-rank'>" + rank_icon + "</span>"
+				+ "<span class='multi-team-sr'>" + sr + "</span>"
+				+ "</div>";
+		}
+	}
+	var avg_sr = player_count > 0 ? Math.round(total_sr / player_count) : 0;
+
+	return (
+		"<div class='multi-team-card'>"
+		+ "<div class='multi-team-header'>Team " + (team_index + 1) + "</div>"
+		+ "<div class='multi-team-sub'>Total: " + total_sr + " &nbsp; Avg: " + avg_sr + "</div>"
+		+ rows
+		+ "</div>"
+	);
+}
+
+function rerun_multi_balance() {
+	close_dialog("popup_dlg_multi_teams");
+	balance_multi_teams();
+}
+
+function export_multi_teams_dlg_open() {
+	open_dialog("popup_dlg_multi_export");
+
+	document.getElementById("dlg_multi_export_format_value").value = ExportOptions.format;
+	document.getElementById("dlg_multi_export_sr").checked = ExportOptions.include_sr;
+	document.getElementById("dlg_multi_export_classes").checked = ExportOptions.include_classes;
+
+	export_multi_teams_dlg_change_format();
+}
+
+function export_multi_teams_dlg_change_format() {
+	var format = document.getElementById("dlg_multi_export_format_value").value;
+	var include_players = true;
+	var include_sr = document.getElementById("dlg_multi_export_sr").checked;
+	var include_classes = document.getElementById("dlg_multi_export_classes").checked;
+	var include_captains = false;
+	// choose column count: up to 4 columns for up to 16 teams, else 2
+	var table_columns = multi_teams.length >= 8 ? 4 : 2;
+
+	ExportOptions.format = format;
+	ExportOptions.include_sr = include_sr;
+	ExportOptions.include_classes = include_classes;
+	localStorage.setItem( storage_prefix+"export_options", JSON.stringify(ExportOptions) );
+
+	var export_str = export_multi_teams( format, include_players, include_sr, include_classes, include_captains, table_columns );
+
+	if ( format == "html-table" ) {
+		var html_container = document.getElementById("dlg_html_export_multi");
+		html_container.style.display = "";
+		document.getElementById("dlg_html_export_multi_hint").style.display = "";
+		document.getElementById("dlg_textarea_export_multi").style.display = "none";
+		html_container.innerHTML = export_str;
+
+		select_html( html_container );
+	} else if ( format == "text-list" ) {
+		document.getElementById("dlg_html_export_multi").style.display = "none";
+		document.getElementById("dlg_html_export_multi_hint").style.display = "none";
+		document.getElementById("dlg_textarea_export_multi").style.display = "";
+		document.getElementById("dlg_textarea_export_multi").value = export_str;
+		document.getElementById("dlg_textarea_export_multi").select();
+		document.getElementById("dlg_textarea_export_multi").focus();
+	} else if ( format == "image" ) {
+		var html_container = document.getElementById("dlg_html_export_multi");
+		html_container.innerHTML = "";
+		html_container.style.display = "";
+		document.getElementById("dlg_html_export_multi_hint").style.display = "none";
+		document.getElementById("dlg_textarea_export_multi").style.display = "none";
+
+		render_html_to_image( export_str, html_container );
+	}
+}
+
+function export_multi_teams_dlg_copy_html() {
+	select_html( document.getElementById("dlg_html_export_multi") );
+	document.execCommand("copy");
 }

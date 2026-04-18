@@ -259,6 +259,190 @@ function export_teams_html( format, include_players, include_sr, include_classes
 	return setup_str;
 }
 
+// Export all balanced multi teams (1 tank / 2 dps / 2 sup per team).
+// Mirrors export_teams but operates on the multi_teams global.
+function export_multi_teams( format, include_players, include_sr, include_classes, include_captains, table_columns ) {
+	var setup_str = "";
+
+	if ( format == "text-list" ) {
+		for ( var t = 0; t < multi_teams.length; t++ ) {
+			var team = multi_teams[t];
+			var team_total = 0;
+			var team_count = 0;
+			var lines = "";
+			for ( var role of class_names ) {
+				if ( ! Array.isArray(team[role]) ) continue;
+				for ( var p = 0; p < team[role].length; p++ ) {
+					var player = team[role][p];
+					var player_sr = get_player_sr( player, role );
+					team_total += player_sr;
+					team_count++;
+
+					var player_str = role + "\t";
+					if ( include_sr ) {
+						player_str += player_sr + "\t";
+					}
+					player_str += player.display_name;
+					if ( include_classes ) {
+						player_str += "\t" + player.classes.join("/");
+					}
+					lines += player_str + "\n";
+				}
+			}
+			var avg = team_count > 0 ? Math.round(team_total / team_count) : 0;
+			setup_str += "Team " + (t+1) + " (Total " + team_total + ", Avg " + avg + ")\n";
+			if ( include_players ) {
+				setup_str += lines;
+			}
+			setup_str += "\n";
+		}
+	} else if ( format == "html-table" ) {
+		setup_str = export_multi_teams_html( include_players, include_sr, include_classes, table_columns, false );
+	} else if ( format == "image" ) {
+		setup_str = export_multi_teams_html( include_players, include_sr, include_classes, table_columns, true );
+	}
+
+	return setup_str.trim();
+}
+
+function export_multi_teams_html( include_players, include_sr, include_classes, table_columns, draw_icons ) {
+	var setup_str = "";
+	var roles_order = ['tank', 'dps', 'support'];
+
+	// figure out uniform row count per team card
+	var team_size = 0;
+	for ( var role of roles_order ) {
+		if ( multi_teams[0] && Array.isArray(multi_teams[0][role]) ) {
+			team_size += multi_teams[0][role].length;
+		}
+	}
+
+	var title_colspan = 1;
+	if ( include_players ) {
+		if ( include_sr ) title_colspan++;
+		if ( include_classes ) title_colspan++;
+		title_colspan++; // slot role column
+	}
+
+	setup_str += "<table style='border-collapse: collapse; background-color: white;'>\n";
+
+	for ( var row = 1; row <= Math.ceil(multi_teams.length / table_columns); row++ ) {
+		var team_offset = (row-1)*table_columns;
+
+		// titles row
+		setup_str += "<tr>";
+		for ( var t = team_offset; t < team_offset+table_columns; t++ ) {
+			if ( t >= multi_teams.length ) break;
+			var team = multi_teams[t];
+			var team_total = 0;
+			for ( var role of roles_order ) {
+				if ( ! Array.isArray(team[role]) ) continue;
+				for ( var p = 0; p < team[role].length; p++ ) {
+					team_total += get_player_sr( team[role][p], role );
+				}
+			}
+			setup_str += "<td colspan='"+title_colspan+
+				"' style='text-align: center;background-color: gray; color: white; border: 1px solid gray;'>";
+			setup_str += escapeHtml("Team " + (t+1)) + " &middot; Total " + team_total;
+			setup_str += "</td>";
+			setup_str += "<td style='width: 1em;'></td>";
+		}
+		setup_str += "</tr>\n";
+
+		if ( include_players ) {
+			// Build ordered flat list of {player, slot_role} per team for stable row alignment
+			var teams_flat = [];
+			for ( var t = team_offset; t < team_offset+table_columns; t++ ) {
+				if ( t >= multi_teams.length ) { teams_flat.push([]); continue; }
+				var flat = [];
+				for ( var role of roles_order ) {
+					if ( ! Array.isArray(multi_teams[t][role]) ) continue;
+					for ( var p = 0; p < multi_teams[t][role].length; p++ ) {
+						flat.push({ player: multi_teams[t][role][p], slot_role: role });
+					}
+				}
+				teams_flat.push(flat);
+			}
+
+			for ( var r = 0; r < team_size; r++ ) {
+				setup_str += "<tr>";
+				for ( var c = 0; c < teams_flat.length; c++ ) {
+					var entry = teams_flat[c][r];
+
+					// slot role cell
+					setup_str += "<td style='text-align: left; border-bottom: 1px solid gray; border-left: 1px solid gray; border-right: 1px solid gray; white-space: nowrap;'>";
+					if ( entry ) {
+						if ( draw_icons ) {
+							setup_str += "<img style='filter: opacity(60%);' src='"+class_icons_datauri[entry.slot_role]+"' alt='"+entry.slot_role+"'/>";
+						} else {
+							var cstr = entry.slot_role;
+							if ( cstr == "support" ) cstr = "sup";
+							setup_str += cstr;
+						}
+					}
+					setup_str += "</td>";
+
+					if ( include_sr ) {
+						setup_str += "<td style='text-align: right; padding-right: 0.5em; border-bottom: 1px solid gray;border-left: 1px solid gray;'>";
+						if ( entry ) {
+							var psr = get_player_sr( entry.player, entry.slot_role );
+							if ( draw_icons ) {
+								var rn = get_rank_name(psr);
+								setup_str += "<img src='"+rank_icons_datauri[rn]+"' alt='"+rn+"'/>";
+							} else {
+								setup_str += psr;
+							}
+						}
+						setup_str += "</td>";
+					}
+
+					var borders = "border-bottom: 1px solid gray;";
+					if ( ! include_sr ) borders += "border-left: 1px solid gray;";
+					if ( ! include_classes ) borders += "border-right: 1px solid gray;";
+					setup_str += "<td style='text-align: left; padding: 0.2em; white-space: nowrap; "+borders+"'>";
+					if ( entry ) {
+						setup_str += escapeHtml( entry.player.display_name );
+					}
+					setup_str += "</td>";
+
+					if ( include_classes ) {
+						setup_str += "<td style='text-align: left; border-bottom: 1px solid gray; border-right: 1px solid gray; white-space: nowrap;'>";
+						if ( entry && entry.player.classes ) {
+							if ( entry.player.classes[0] !== undefined ) {
+								var cn = entry.player.classes[0];
+								if ( draw_icons ) {
+									setup_str += "<img style='filter: opacity(60%);' src='"+class_icons_datauri[cn]+"'/>";
+								} else {
+									var cs = cn; if (cs == "support") cs = "sup";
+									setup_str += cs;
+								}
+							}
+							if ( entry.player.classes[1] !== undefined ) {
+								var cn = entry.player.classes[1];
+								if ( draw_icons ) {
+									setup_str += "<img style='height: 15px; width: auto; filter: opacity(40%);' src='"+class_icons_datauri[cn]+"'/>";
+								} else {
+									var cs = cn; if (cs == "support") cs = "sup";
+									setup_str += "/" + cs;
+								}
+							}
+						}
+						setup_str += "</td>";
+					}
+
+					setup_str += "<td></td>"; // vertical spacer
+				}
+				setup_str += "</tr>\n";
+			}
+		}
+
+		setup_str += "<tr style='height: 1em;'></tr>";
+	}
+
+	setup_str += "</table>\n";
+	return setup_str;
+}
+
 function import_lobby( format, import_str ) {
 	var added_players = [];
 	var players_for_update = [];

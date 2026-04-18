@@ -48,9 +48,29 @@ onmessage = function(e) {
 			team1: Balancer.team1,
 			team2: Balancer.team2,
 			team1_slots: Balancer.team1_slots,
-			team2_slots: Balancer.team2_slots,			
+			team2_slots: Balancer.team2_slots,
 		}
 		postMessage(["finish", result_struct]);
+	} else if ( event_type == "balance_multi" ) {
+		if (e.data.length < 2) {
+			return;
+		}
+		Balancer.players = e.data[1];
+
+		try {
+			Balancer.balanceTeamsMulti();
+		} catch(err) {
+			postMessage(["error", err.message]);
+			return;
+		}
+
+		var result_struct = {
+			is_successfull: Balancer.is_successfull,
+			multi_teams:    Balancer.multi_teams,
+			leftovers:      Balancer.multi_leftovers,
+			meta:           Balancer.multi_meta,
+		};
+		postMessage(["finish_multi", result_struct]);
 	}
 }
 
