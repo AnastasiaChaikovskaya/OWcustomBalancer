@@ -2342,11 +2342,31 @@ function render_multi_teams_grid() {
 	}
 }
 
+function get_team_captain( team ) {
+	var roles = ['tank', 'dps', 'support'];
+	var best = null;
+	var best_sr = -Infinity;
+	for ( var ri = 0; ri < roles.length; ri++ ) {
+		var role = roles[ri];
+		var arr = team[role] || [];
+		for ( var k = 0; k < arr.length; k++ ) {
+			var p = arr[k];
+			var sr = get_player_sr(p, role);
+			if ( sr > best_sr ) {
+				best_sr = sr;
+				best = p;
+			}
+		}
+	}
+	return best;
+}
+
 function render_multi_team_card( team_index, team ) {
 	var roles = ['tank', 'dps', 'support'];
 	var total_sr = 0;
 	var player_count = 0;
 	var rows = "";
+	var captain = get_team_captain( team );
 	for ( var ri = 0; ri < roles.length; ri++ ) {
 		var role = roles[ri];
 		var arr = team[role];
@@ -2365,6 +2385,9 @@ function render_multi_team_card( team_index, team ) {
 			if ( off_role ) {
 				name_html = "<span title='off-role' class='off-role-name'>" + name_html + "</span>";
 			}
+			if ( captain && p === captain ) {
+				name_html = "<span class='captain-mark' title='Captain (highest SR)'>&#9819;</span> " + name_html;
+			}
 			rows +=
 				"<div class='multi-team-row'>"
 				+ "<span>" + role_icon + "</span>"
@@ -2376,13 +2399,54 @@ function render_multi_team_card( team_index, team ) {
 	}
 	var avg_sr = player_count > 0 ? Math.round(total_sr / player_count) : 0;
 
+	var header_name = captain ? escapeHtml(captain.display_name) : ("Team " + (team_index + 1));
+
 	return (
 		"<div class='multi-team-card'>"
-		+ "<div class='multi-team-header'>Team " + (team_index + 1) + "</div>"
+		+ "<div class='multi-team-header' title='Captain of team " + (team_index + 1) + "'>" + header_name + "</div>"
 		+ "<div class='multi-team-sub'>Total: " + total_sr + " &nbsp; Avg: " + avg_sr + "</div>"
 		+ rows
 		+ "</div>"
 	);
+}
+
+function build_captains_list() {
+	// Returns an array of { team_index, captain_id } — ids rendered with `#` separator.
+	var out = [];
+	for ( var i = 0; i < multi_teams.length; i++ ) {
+		var cap = get_team_captain( multi_teams[i] );
+		if ( ! cap ) { continue; }
+		var id = (cap.id || cap.display_name || "").replace("-", "#");
+		out.push({ team_index: i, captain_id: id, display_name: cap.display_name });
+	}
+	return out;
+}
+
+function format_captains_text( list ) {
+	var lines = [];
+	for ( var i = 0; i < list.length; i++ ) {
+		lines.push( (i + 1) + ". " + list[i].captain_id );
+	}
+	return lines.join("\n");
+}
+
+function export_captains_dlg_open() {
+	var list = build_captains_list();
+	document.getElementById("dlg_textarea_captains").value = format_captains_text(list);
+	open_dialog("popup_dlg_captains");
+	var ta = document.getElementById("dlg_textarea_captains");
+	setTimeout( function() { ta.focus(); ta.select(); }, 50 );
+}
+
+function export_captains_copy() {
+	var ta = document.getElementById("dlg_textarea_captains");
+	ta.focus();
+	ta.select();
+	if ( navigator.clipboard && navigator.clipboard.writeText ) {
+		navigator.clipboard.writeText(ta.value);
+	} else {
+		try { document.execCommand("copy"); } catch(e) {}
+	}
 }
 
 function rerun_multi_balance() {

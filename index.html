@@ -670,7 +670,29 @@
 				&nbsp;
 				<input class="big-btn" type="button" value="Export" onclick="export_multi_teams_dlg_open();"/>
 				&nbsp;
+				<input class="big-btn" type="button" value="Export captains" onclick="export_captains_dlg_open();" title="Copy the BattleTags of the highest-SR player from each team"/>
+				&nbsp;
 				<input class="big-btn" type="button" value="Close" onclick="close_dialog('popup_dlg_multi_teams');"/>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div id="popup_dlg_captains" class="dlg" style="display:none">
+	<div class="dlg-background"></div>
+	<div class="dlg-container">
+		<div class="dlg-content">
+			<span class="team-title">Team captains</span>
+			<input title="Close" type="button" class="team_btn dlg-close" onclick="close_dialog('popup_dlg_captains');" value="X"/>
+			<br/>
+			<br/>
+			<div class="text-left text-sm text-text-muted mb-2">Highest-SR player from each balanced team.</div>
+			<textarea id="dlg_textarea_captains" rows="12" cols="40" readonly></textarea>
+			<br/>
+			<div class="text-center">
+				<input class="big-btn" type="button" value="Copy to clipboard" onclick="export_captains_copy();"/>
+				&nbsp;
+				<input class="big-btn" type="button" value="OK" onclick="close_dialog('popup_dlg_captains');"/>
 			</div>
 		</div>
 	</div>
