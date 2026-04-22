@@ -1609,8 +1609,19 @@ th.sort-down::after {
 }
 .multi-team-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+.multi-team-header {
+  white-space: normal;
+  word-break: break-word;
+}
+#popup_dlg_multi_teams .dlg-content {
+  min-width: 84em !important;
+  width: min(92em, 95vw);
+}
+.multi-team-row {
+  grid-template-columns: 2.2em minmax(0, 1fr) 2.4em 3.6em;
 }
 .multi-team-card {
   padding: 10px 12px;

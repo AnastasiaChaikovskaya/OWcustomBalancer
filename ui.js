@@ -2380,7 +2380,8 @@ function render_multi_team_card( team_index, team ) {
 				"<img src='"+rank_icons_datauri[rank]+"' alt='"+rank+"' style='height:2em;vertical-align:middle;'/>" : "";
 			var role_icon = class_icons_datauri[role] ?
 				"<img src='"+class_icons_datauri[role]+"' alt='"+role+"' style='height:1.8em;vertical-align:middle;'/>" : role;
-			var name_html = escapeHtml(p.display_name);
+			var battletag = (p.id || p.display_name || "").replace("-", "#");
+			var name_html = escapeHtml(battletag);
 			var off_role = (p.classes && p.classes.indexOf(role) !== 0);
 			if ( off_role ) {
 				name_html = "<span title='off-role' class='off-role-name'>" + name_html + "</span>";
@@ -2399,7 +2400,9 @@ function render_multi_team_card( team_index, team ) {
 	}
 	var avg_sr = player_count > 0 ? Math.round(total_sr / player_count) : 0;
 
-	var header_name = captain ? escapeHtml(captain.display_name) : ("Team " + (team_index + 1));
+	var header_name = captain
+		? escapeHtml( (captain.id || captain.display_name || "").replace("-", "#") )
+		: ("Team " + (team_index + 1));
 
 	return (
 		"<div class='multi-team-card'>"
