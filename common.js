@@ -228,6 +228,7 @@ function get_default_settings() {
 		adjust_dps: 110,
 		adjust_tank: 100,
 		adjust_support: 90,
+		adjust_sr_threshold: 3500,
 		separate_otps: true,
 		
 		// classic balancer

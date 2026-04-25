@@ -35,6 +35,9 @@ var Balancer = {
 	// example: adjust_sr_by_class: {'dps':120, 'tank':100, 'support':80},
 	adjust_sr: false,
 	adjust_sr_by_class: {},
+	// SR threshold above which the multiplier kicks in (smooth, applies to excess only).
+	// 0 reproduces flat-multiplier (pre-threshold) behavior.
+	adjust_sr_threshold: 3500,
 	// combinations with objective function value within range of [OF_min...OF_min+OF_thresold] are considered as balanced
 	OF_thresold: 10,
 	// if debug messages enabled through onDebugMessage callcack
@@ -614,7 +617,11 @@ var Balancer = {
 				var top_class = player.classes[0];
 				// @todo why appling only for players with 1 class? o_0
 				if( (top_class !== undefined) && (player.classes.length == 1) ) {
-					player_sr = Math.round( player_sr * is_undefined(this.adjust_sr_by_class[top_class],100)/100 );
+					var pct = is_undefined(this.adjust_sr_by_class[top_class],100);
+					var threshold = is_undefined(this.adjust_sr_threshold, 0);
+					if ( player_sr > threshold ) {
+						player_sr = threshold + Math.round( (player_sr - threshold) * pct/100 );
+					}
 				}
 			}
 		}
@@ -745,7 +752,11 @@ var Balancer = {
 	calcPlayerSRRoleLock: function ( player, class_name ) {
 		var player_sr = get_player_sr( player, class_name );
 		if ( this.adjust_sr ) {
-			player_sr = Math.round( player_sr * is_undefined(this.adjust_sr_by_class[class_name],100)/100 );
+			var pct = is_undefined(this.adjust_sr_by_class[class_name],100);
+			var threshold = is_undefined(this.adjust_sr_threshold, 0);
+			if ( player_sr > threshold ) {
+				player_sr = threshold + Math.round( (player_sr - threshold) * pct/100 );
+			}
 		}
 		return player_sr;
 	},
@@ -823,12 +834,13 @@ var Balancer = {
 		var tmp_obj = {};
 		
 		// list of properies affecting balance calculations
-		var balance_properties = [			
+		var balance_properties = [
 			"slots_count",
 			"algorithm",
 			"separate_otps",
 			"adjust_sr",
 			"adjust_sr_by_class",
+			"adjust_sr_threshold",
 			"OF_thresold",
 			"classic_sr_calc_method",
 			"balance_priority_classic",

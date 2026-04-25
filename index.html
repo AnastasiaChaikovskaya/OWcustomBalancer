@@ -448,14 +448,17 @@
 								<img src="class_icons/tank.svg" style="height: 1em;"/>
 								<input disabled id="adjust_tank" class="percent" type="number" size=3 min=0 max=999 autocomplete="off" value="100"/>
 								% &nbsp;
-								
+
 								<img src="class_icons/dps.svg" style="height: 1em;"/>
-								<input disabled id="adjust_dps" class="percent" type="number" size=3 min=0 max=999 autocomplete="off" value="120"/>
+								<input disabled id="adjust_dps" class="percent" type="number" size=3 min=0 max=999 autocomplete="off" value="110"/>
 								% &nbsp;
-								
+
 								<img src="class_icons/support.svg" style="height: 1em;"/>
-								<input disabled id="adjust_support" class="percent" type="number" size=3 min=0 max=999 autocomplete="off" value="80"/>
+								<input disabled id="adjust_support" class="percent" type="number" size=3 min=0 max=999 autocomplete="off" value="90"/>
 								%  </br>
+
+								<label for="adjust_sr_threshold" title="Multiplier applies only to the part of SR above this value. Set 0 to apply always.">Apply only above SR:</label>
+								<input disabled id="adjust_sr_threshold" class="percent" type="number" min=0 max=5000 autocomplete="off" value="3500" style="width: 5em;"/>
 							</div>
 							
 							<input type="checkbox" id="separate_otps">
