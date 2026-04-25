@@ -358,6 +358,11 @@
 					<div class="cell"><label for="dlg_player_checkin">Checked-in</label></div>
 					<div class="cell"><input type="checkbox" id="dlg_player_checkin"></div>
 				</div>
+
+				<div class="row">
+					<div class="cell"><label for="dlg_player_flex" title="All enabled roles are treated equally — no priority, no off-role penalty">Flex</label></div>
+					<div class="cell"><input type="checkbox" id="dlg_player_flex" onchange="apply_flex_ui_state();"></div>
+				</div>
 			</div>
 			
 			<div class="mt-4 mb-2 text-sm uppercase tracking-wider text-text-muted font-semibold">

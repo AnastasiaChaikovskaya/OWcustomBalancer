@@ -974,6 +974,20 @@ span.sr-edited {
   padding-left: 0.4em;
   vertical-align: middle;
 }
+.player-flex-mark {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 1px 5px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  line-height: 1;
+}
 .captain-mark {
   color: var(--success);
   font-size: 10px;
@@ -1508,6 +1522,9 @@ table#dlg_player_class_table tr:first-child.dlg-player-class-row {
 }
 .class-disabled {
   opacity: 0.35;
+}
+table#dlg_player_class_table.flex-mode .dlg-player-class-row td:last-child {
+  visibility: hidden;
 }
 .class-icon-dlg {
   height: 1.3em;

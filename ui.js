@@ -471,12 +471,19 @@ function edit_player_ok() {
 	
 	// check-in
 	if ( document.getElementById("dlg_player_checkin").checked ) {
-		checkin_list.add( player_struct.id );		
+		checkin_list.add( player_struct.id );
 	} else {
 		checkin_list.delete( player_struct.id );
 	}
 	save_checkin_list();
-	
+
+	// flex flag — when on, all enabled roles are treated equally during balancing
+	if ( document.getElementById("dlg_player_flex").checked ) {
+		player_struct.flex = true;
+	} else {
+		delete player_struct.flex;
+	}
+
 	close_dialog("popup_dlg_edit_player");
 	save_players_list();
 	redraw_player( player_struct );
@@ -1767,13 +1774,23 @@ function draw_player_cell( player_struct, small=false, is_captain=false, slot_cl
 		mark_display.appendChild(text_node);
 		player_name.appendChild(mark_display);
 	}
-	
+
+	// flex mark \u2014 all enabled roles weighted equally during balancing
+	if ( player_struct.flex === true && ! player_struct.empty ) {
+		var flex_mark = document.createElement("span");
+		flex_mark.className = "player-flex-mark";
+		flex_mark.title = "Flex \u2014 all enabled roles are treated equally";
+		flex_mark.appendChild( document.createTextNode( "FLEX" ) );
+		player_name.appendChild(flex_mark);
+		new_player_item.classList.add("player-flex");
+	}
+
 	// active classes icons
 	if ( player_struct.classes !== undefined ) {
 		for(var i=0; i<player_struct.classes.length; i++) {
 			var class_icon = document.createElement("img");
 			class_icon.className = "class-icon";
-			if( i != 0 )  {
+			if( i != 0 && player_struct.flex !== true )  {
 				class_icon.classList.add("secondary-class");
 			}
 			if( player_struct.ce === true ) {
@@ -1840,8 +1857,10 @@ function fill_player_stats_dlg( clear_errors=true ) {
 	document.getElementById("dlg_player_pinned").checked = pinned_players.has( player_struct.id );
 	
 	document.getElementById("dlg_player_checkin").checked = checkin_list.has( player_struct.id );
-	
-	// fill class table	
+
+	document.getElementById("dlg_player_flex").checked = (player_struct.flex === true);
+
+	// fill class table
 	document.getElementById("dlg_player_class_table").innerHTML = "";
 	// prepare array of classes, ordered for specified player (main class is first)
 	var class_order = [];
@@ -1927,10 +1946,23 @@ function fill_player_stats_dlg( clear_errors=true ) {
 	
 	document.getElementById("dlg_edit_player_last_updated").innerHTML = print_date(player_struct.last_updated);
 	document.getElementById("dlg_update_player_stats_loader").style.display = "none";
-	
+
 	if (clear_errors) {
 		document.getElementById("dlg_edit_player_update_result").style.display = "none";
 		document.getElementById("dlg_edit_player_update_result").innerHTML = "";
+	}
+
+	apply_flex_ui_state();
+}
+
+function apply_flex_ui_state() {
+	var class_table = document.getElementById("dlg_player_class_table");
+	if ( ! class_table ) return;
+	var flex_checkbox = document.getElementById("dlg_player_flex");
+	if ( flex_checkbox && flex_checkbox.checked ) {
+		class_table.classList.add("flex-mode");
+	} else {
+		class_table.classList.remove("flex-mode");
 	}
 }
 

@@ -760,9 +760,10 @@ var Balancer = {
 	// 5 units = 250 SR	
 	calcClassMismatchRoleLock: function() {
 		var players_on_offclass = 0;
-		
+
 		for( var i=0; i<this.picked_players_team1.length; i++) {
 			var player_struct = this.picked_players_team1[i];
+			if ( player_struct.flex === true ) continue;
 			var slot_class = player_struct.classes[ this.class_selection_mask_team1[i] ];
 			if ( player_struct.classes.indexOf(slot_class) == 1 ) {
 				players_on_offclass += 1;
@@ -772,6 +773,7 @@ var Balancer = {
 		}
 		for( var i=0; i<this.picked_players_team2.length; i++) {
 			var player_struct = this.picked_players_team2[i];
+			if ( player_struct.flex === true ) continue;
 			var slot_class = player_struct.classes[ this.class_selection_mask_team2[i] ];
 			if ( player_struct.classes.indexOf(slot_class) == 1 ) {
 				players_on_offclass += 1;
@@ -779,7 +781,7 @@ var Balancer = {
 				players_on_offclass += 1.5;
 			}
 		}
-		
+
 		return 10 * Math.pow(players_on_offclass, 2);
 	},
 	
@@ -1018,6 +1020,27 @@ var Balancer = {
 		}
 		var pick = Math.floor( Math.random() * this.multi_balanced_solutions.length );
 		this.multi_teams = this.cloneTeamsMulti( this.multi_balanced_solutions[pick] );
+
+		// Recompute leftovers: any input player not placed on a team
+		// (e.g. excluded because none of their enabled roles fit a remaining slot).
+		var placed = {};
+		var roles_all = ['tank','dps','support'];
+		for ( var t = 0; t < this.multi_teams.length; t++ ) {
+			for ( var ri = 0; ri < roles_all.length; ri++ ) {
+				var arr_role = this.multi_teams[t][ roles_all[ri] ];
+				for ( var k = 0; k < arr_role.length; k++ ) {
+					placed[ arr_role[k].id ] = true;
+				}
+			}
+		}
+		var leftovers = [];
+		for ( var i = 0; i < this.players.length; i++ ) {
+			if ( ! placed[ this.players[i].id ] ) {
+				leftovers.push( this.players[i] );
+			}
+		}
+		this.multi_leftovers = leftovers;
+
 		this.multi_meta.team_count = this.multi_teams.length;
 		this.multi_meta.off_role_count = this.countOffRoleMulti( this.multi_teams );
 		this.multi_meta.warnings = [];
@@ -1061,9 +1084,12 @@ var Balancer = {
 
 	// Off-role cost for a player assigned to slot_role.
 	// 0 = main class, 1 = secondary, 1.5 = tertiary, 3 = role not in classes at all.
+	// Flex players: every enabled role costs 0 (no priority).
 	playerOffRoleCost: function( player, slot_role ) {
 		if ( ! player || ! Array.isArray(player.classes) ) return 3;
 		var idx = player.classes.indexOf(slot_role);
+		if ( idx === -1 ) return 3;
+		if ( player.flex === true ) return 0;
 		if ( idx === 0 ) return 0;
 		if ( idx === 1 ) return 1;
 		if ( idx === 2 ) return 1.5;
@@ -1078,8 +1104,7 @@ var Balancer = {
 
 		// Fixed slot composition
 		var slots_per_team = { tank:1, dps:2, support:2 };
-		// Assign tank first (scarcest), then dps, then support
-		var roles_ordered = ['tank', 'dps', 'support'];
+		var all_roles = ['tank', 'dps', 'support'];
 
 		var balancer = this;
 		var remaining = players.slice();
@@ -1091,23 +1116,52 @@ var Balancer = {
 			return (s & 0xffffff) / 0x1000000;
 		};
 
-		for ( var ri = 0; ri < roles_ordered.length; ri++ ) {
-			var role = roles_ordered[ri];
+		// Process roles in order of scarcity (lowest qualified-to-need ratio first)
+		// and within each role pick the most-constrained players (fewest enabled
+		// roles) first, so a single-role player isn't displaced by a flex player.
+		var processed = {};
+		while ( true ) {
+			var next_role = null;
+			var min_pressure = Infinity;
+			for ( var ri = 0; ri < all_roles.length; ri++ ) {
+				var r = all_roles[ri];
+				if ( processed[r] ) continue;
+				var need_r = N * slots_per_team[r];
+				if ( need_r === 0 ) { processed[r] = true; continue; }
+				var qualified = 0;
+				for ( var p = 0; p < remaining.length; p++ ) {
+					if ( Array.isArray(remaining[p].classes) && remaining[p].classes.indexOf(r) !== -1 ) {
+						qualified++;
+					}
+				}
+				var pressure = qualified / need_r;
+				if ( pressure < min_pressure ) {
+					min_pressure = pressure;
+					next_role = r;
+				}
+			}
+			if ( next_role == null ) break;
+			processed[next_role] = true;
+
+			var role = next_role;
 			var need = N * slots_per_team[role];
-			if ( need === 0 ) continue;
 
 			var ranked = [];
 			for ( var p = 0; p < remaining.length; p++ ) {
 				var player = remaining[p];
+				// Hard rule: only consider players who actually have this role enabled.
+				if ( ! Array.isArray(player.classes) || player.classes.indexOf(role) === -1 ) continue;
 				ranked.push({
 					p: player,
+					constraint: player.classes.length,
 					cost: balancer.playerOffRoleCost( player, role ),
 					sr:   balancer.calcPlayerSRRoleLock( player, role ),
 					j:    rand(),
 				});
 			}
-			// lower cost first; then higher SR first; jitter for tie-break
+			// fewer enabled roles first; lower cost; higher SR; jitter
 			ranked.sort( function(a, b) {
+				if ( a.constraint !== b.constraint ) return a.constraint - b.constraint;
 				if ( a.cost !== b.cost ) return a.cost - b.cost;
 				if ( a.sr !== b.sr ) return b.sr - a.sr;
 				return a.j - b.j;
@@ -1126,7 +1180,11 @@ var Balancer = {
 			}
 			remaining = new_remaining;
 
-			// Snake-draft picked (sorted by SR desc within each cost tier) into teams
+			// Snake-draft picked into teams, sorted by SR desc for SR balance
+			picked.sort( function(a, b) {
+				if ( a.sr !== b.sr ) return b.sr - a.sr;
+				return a.j - b.j;
+			} );
 			var dir = 1;
 			var team_idx = 0;
 			for ( var si = 0; si < picked.length; si++ ) {
@@ -1189,6 +1247,11 @@ var Balancer = {
 						var arr2 = teams[k][role2];
 						for ( var a = 0; a < arr1.length; a++ ) {
 							for ( var b = 0; b < arr2.length; b++ ) {
+								// Hard rule: skip swaps that would put a player on a role they don't have enabled.
+								var pa = arr1[a], pb = arr2[b];
+								if ( ! Array.isArray(pa.classes) || pa.classes.indexOf(role2) === -1 ) continue;
+								if ( ! Array.isArray(pb.classes) || pb.classes.indexOf(role1) === -1 ) continue;
+
 								var tmp = arr1[a];
 								arr1[a] = arr2[b];
 								arr2[b] = tmp;
